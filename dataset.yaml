@@ -1,0 +1,9 @@
+# YOLO Dataset Configuration
+path: /high_school_io_2025/yolo_dataset
+train: train/images
+val: val/images
+test: test/images
+
+# Classes
+nc: 3
+names: ['go_up', 'go_down', 'rotate']
