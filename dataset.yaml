@@ -5,5 +5,5 @@ val: val/images
 test: test/images
 
 # Classes
-nc: 3
-names: ['go_up', 'go_down', 'rotate']
+nc: 5
+names: ['thumb_up', 'thumb_down', 'index_up', 'index_down', 'rotate']

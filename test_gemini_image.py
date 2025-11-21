@@ -3,16 +3,24 @@
 Generate synthetic dataset using Gemini image generation API.
 Creates YOLO-format dataset with images and labels.
 
-IMPORTANT: Bounding boxes must be:
-- Perfect rectangles (straight horizontal/vertical lines, 90-degree corners)
-- Consistent color (bright red RGB: 255, 0, 0) across all images
-- Consistent thickness (3 pixels) for visual uniformity
-- Tightly fitted around the hand with minimal padding
+IMPORTANT: Bounding boxes:
+- Should NOT be drawn on the image - images should be clean without annotations
+- Bounding box coordinates must be provided in JSON format only
+- Coordinates must define perfect rectangles (straight horizontal/vertical lines, 90-degree corners)
+- Coordinates must be tightly fitted around the hand with minimal padding
 - Contain ONLY ONE hand/object per bounding box (no multiple objects combined)
+- When used to draw a bounding box, should create a tight rectangular box around the hand
 
 BACKGROUND REQUIREMENTS:
-- Use diverse backgrounds (indoor, outdoor, neutral, various lighting)
+- Use diverse backgrounds and positions(indoor, outdoor, neutral, various lighting)
 - Ensure clear visual separation between hand and background
+- Ensure the hand is in different positions and orientations in different images
+- Ensure the hand is in different backgrounds and positions in different images
+- Ensure the hand is in different lighting and positions in different images
+- Ensure the hand is in different textures and positions in different images
+- Ensure the hand is in different shapes and positions in different images
+- Ensure the hand is in different sizes and positions in different images
+- Ensure the hand is in different colors and positions in different images
 """
 
 import base64
@@ -29,7 +37,7 @@ from dotenv import load_dotenv
 from PIL import Image
 
 
-def build_prompt(class_name: str, gesture_type: str, sample_index: int) -> str:
+def build_prompt(class_name: str, sample_index: int) -> str:
     """Build the prompt for image generation."""
     # Variation hints for diversity
     variation_hints = [
@@ -43,50 +51,44 @@ def build_prompt(class_name: str, gesture_type: str, sample_index: int) -> str:
     
     # Gesture descriptions
     gesture_descriptions = {
-        "go_up": {
-            "thumbs_up": "thumbs up gesture",
-            "index_up": "index finger pointing up gesture",
-        },
-        "go_down": {
-            "thumbs_down": "thumbs down gesture",
-            "index_down": "index finger pointing down gesture",
-        },
-        "rotate": {
-            "stop": "stop hand sign (palm facing forward)",
-        },
+        "thumb_up": "thumbs up gesture",
+        "thumb_down": "thumbs down gesture",
+        "index_up": "index finger pointing up gesture",
+        "index_down": "index finger pointing down gesture",
+        "rotate": "stop hand sign with the palm facing forward",
     }
     
-    gesture_desc = gesture_descriptions[class_name][gesture_type]
+    gesture_desc = gesture_descriptions[class_name]
     
     prompt = (
         f"Generate a new image of a human hand showing a {gesture_desc} (sample variation {sample_index}). "
         f"{variation}. "
-        f"The hand should have diverse skin color and tone - use different skin tones, hand sizes, and appearances. "
+        f"The hand should have diverse skin color and tone - use different skin tones, hand sizes, and appearances and have different pov, angles, and positions."
         f"BACKGROUND REQUIREMENTS: Use diverse and varied backgrounds - include different environments such as: "
-        f"indoor settings (offices, homes, studios with plain or textured walls), outdoor settings (parks, streets, nature), "
+        f"indoor settings (offices, homes, studios with plain or textured walls), outdoor settings (parks, streets, nature), people in the background, "
         f"neutral backgrounds (solid colors, gradients, abstract patterns), and various lighting conditions. "
         f"Ensure the background is distinct from the hand to maintain clear visual separation. "
-        f"CRITICAL: The generated image MUST have a tight bounding box drawn ON the image itself around the hand. "
-        f"IMPORTANT BOUNDING BOX REQUIREMENTS FOR DATASET UNIFORMITY: "
-        f"1. The bounding box MUST be a PERFECT RECTANGLE - use straight horizontal and vertical lines only, NO random shapes, curves, or irregular polygons. It should be in front of the background."
-        f"2. Use a CONSISTENT COLOR for all bounding boxes - use bright red (RGB: 255, 0, 0) for uniformity across the entire dataset. "
-        f"3. Use a CONSISTENT THICKNESS - draw the bounding box with a line thickness of exactly 3 pixels for all images to maintain visual consistency. "
-        f"4. The bounding box must be EXTREMELY TIGHT around the hand - fit as snugly as possible with ABSOLUTE MINIMAL padding (just 1-2 pixels maximum). "
-        f"5. The box must tightly wrap around the fingertips, thumb, palm edges, and wrist - no extra space. "
-        f"6. The width and height should be as small as possible while still fully containing the entire hand. "
-        f"7. The rectangular box must have 90-degree corners - perfectly square corners, not rounded or angled. "
-        f"8. CRITICAL: The bounding box must contain ONLY ONE HAND/OBJECT - do NOT combine multiple hands, objects, or body parts in a single bounding box. "
+        f"CRITICAL: The generated image MUST have a human hand. In different images, the hand should be in different positions and orientations but with the same gesture. "
+        f"IMPORTANT: Do NOT draw any bounding boxes on the image itself. The image should be clean without any annotations or bounding boxes drawn on it. "
+        f"BOUNDING BOX COORDINATES REQUIREMENTS (JSON format only): "
+        f"1. Provide the bounding box coordinates in JSON format only - do NOT draw anything on the image. "
+        f"2. The bounding box coordinates must define a PERFECT RECTANGLE - a tight rectangular box around the hand. "
+        f"3. The bounding box must be EXTREMELY TIGHT around the hand - fit as snugly as possible with ABSOLUTE MINIMAL padding (just 1-2 pixels maximum). "
+        f"4. The box coordinates must tightly wrap around the fingertips, thumb, palm edges, and wrist - no extra space. "
+        f"5. The width and height should be as small as possible while still fully containing the entire hand. "
+        f"6. The rectangular box must have 90-degree corners - perfectly square corners, not rounded or angled. "
+        f"7. CRITICAL: The bounding box must contain ONLY ONE HAND/OBJECT - do NOT combine multiple hands, objects, or body parts in a single bounding box. "
         f"   Each bounding box must tightly enclose exactly one hand showing the gesture, with no other objects or body parts included. "
-        f"   If there are multiple hands or objects in the image, draw separate bounding boxes for each, but for this dataset we need only ONE hand per image. "
-        f"This is the most important requirement - the bounding box ON THE IMAGE must be extremely precise, tight, rectangular, uniform in appearance, and contain only one hand. "
-        f"CRITICAL: You must return the generated image with the rectangular bounding box drawn on it as part of your response. "
-        f"Additionally, provide the bounding box coordinates in JSON format. "
+        f"   For this dataset we need only ONE hand per image. "
+        f"8. The JSON coordinates, when used to draw a bounding box, should create a tight rectangular box that perfectly fits around the hand. "
+        f"CRITICAL: You must return the generated image (without any bounding boxes drawn on it) "
+        f"and provide the tight bounding box coordinates in JSON format. "
         f"The JSON must contain a 'labels' array with at least one object having: "
         f"'class_name' (string, set to '{class_name}'), "
         f"'format' (string, set to 'yolo'), "
         f"'center_x', 'center_y', 'width', 'height' (all numbers in YOLO normalized coordinates, 0-1 range). "
-        f"The JSON coordinates must match exactly the rectangular bounding box drawn on the image. "
-        f"IMPORTANT: The image should contain only ONE hand showing the gesture - do not include multiple hands or combine multiple objects in the bounding box."
+        f"The JSON coordinates must define a tight rectangular bounding box that can be drawn on the image when needed. "
+        f"IMPORTANT: The image should contain only ONE hand showing the gesture - do not include multiple hands or combine multiple objects in the image."
     )
     return prompt
 
@@ -134,34 +136,34 @@ def extract_image_and_labels(response_data: dict):
 
 
 def generate_image(api_key: str, prompt: str, timeout: float = 30.0, max_retries: int = 3):
-    """Generate a single image using Gemini API."""
-    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent"
+    """Generate a single image using Vertex AI API."""
+    location = os.getenv("LOCATION", "us-central1")
+    project_id = os.getenv("PROJECT_ID")
+    
+    if not project_id:
+        raise ValueError("PROJECT_ID environment variable is required")
+    
+    url = f"https://{location}-aiplatform.googleapis.com/v1/projects/{project_id}/locations/{location}/publishers/google/models/gemini-2.5-flash-image:generateContent?key={api_key}"
     
     headers = {
         "Content-Type": "application/json",
-        "x-goog-api-key": api_key,
     }
     
     payload = {
         "contents": [
             {
+                "role": "user",
                 "parts": [
-                    {"text": prompt},
-                ],
+                    {"text": prompt}
+                ]
             }
         ],
-        "generationConfig": {
+        "generation_config": {
             "temperature": 0.8,
             "top_k": 32,
             "top_p": 0.95,
             "response_modalities": ["TEXT", "IMAGE"],
         },
-        "safetySettings": [
-            {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
-            {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
-            {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
-            {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
-        ],
     }
     
     for attempt in range(1, max_retries + 1):
@@ -169,9 +171,21 @@ def generate_image(api_key: str, prompt: str, timeout: float = 30.0, max_retries
             response = requests.post(url, json=payload, headers=headers, timeout=timeout)
             
             if not response.ok:
-                print(f"    ⚠️ API error (attempt {attempt}/{max_retries}): {response.status_code}")
+                status_code = response.status_code
+                print(f"    ⚠️ API error (attempt {attempt}/{max_retries}): {status_code}")
+                
+                # Handle rate limiting (429) with longer backoff
+                if status_code == 429:
+                    wait_time = min(60 * attempt, 300)  # Cap at 5 minutes
+                    print(f"    ⏳ Rate limited. Waiting {wait_time} seconds before retry...")
+                    if attempt < max_retries:
+                        time.sleep(wait_time)
+                        continue
+                
                 if attempt == max_retries:
                     response.raise_for_status()
+                
+                # Exponential backoff for other errors
                 time.sleep(2 ** (attempt - 1))
                 continue
             
@@ -190,7 +204,13 @@ def generate_image(api_key: str, prompt: str, timeout: float = 30.0, max_retries
             print(f"    ⚠️ Error (attempt {attempt}/{max_retries}): {e}")
             if attempt == max_retries:
                 return None, None
-            time.sleep(2 ** (attempt - 1))
+            # Longer wait for rate limiting errors
+            if "429" in str(e) or "Too Many Requests" in str(e):
+                wait_time = min(60 * attempt, 300)
+                print(f"    ⏳ Rate limited. Waiting {wait_time} seconds before retry...")
+                time.sleep(wait_time)
+            else:
+                time.sleep(2 ** (attempt - 1))
     
     return None, None
 
@@ -199,6 +219,32 @@ def save_yolo_label(label_path: Path, class_id: int, center_x: float, center_y: 
     """Save YOLO format label file."""
     with open(label_path, 'w') as f:
         f.write(f"{class_id} {center_x:.6f} {center_y:.6f} {width:.6f} {height:.6f}\n")
+
+
+def get_next_index_for_class(class_name: str, images_dir: Path) -> int:
+    """Find the next available index for a class by checking existing files."""
+    if not images_dir.exists():
+        return 1
+    
+    # Pattern: class_name_XXX.jpg or .jpeg
+    existing_files = list(images_dir.glob(f"{class_name}_*.jpg")) + list(images_dir.glob(f"{class_name}_*.jpeg"))
+    
+    if not existing_files:
+        return 1
+    
+    # Extract indices from filenames
+    indices = []
+    for file in existing_files:
+        # Extract number from filename like "go_up_001.jpg" or "go_up_001.jpeg"
+        match = re.search(rf"{re.escape(class_name)}_(\d+)\.(jpg|jpeg)", file.name)
+        if match:
+            indices.append(int(match.group(1)))
+    
+    if not indices:
+        return 1
+    
+    # Return next index after the highest existing one
+    return max(indices) + 1
 
 
 def main():
@@ -210,21 +256,21 @@ def main():
         sys.exit(1)
     
     # Class mapping
-    class_to_id = {"go_up": 0, "go_down": 1, "rotate": 2}
+    class_to_id = {
+        "thumb_up": 0,
+        "thumb_down": 1,
+        "index_up": 2,
+        "index_down": 3,
+        "rotate": 4,
+    }
     
-    # Dataset configuration
+    # Dataset configuration - each class with its count
     dataset_config = {
-        "go_up": [
-            ("thumbs_up", 70),
-            ("index_up", 70),
-        ],
-        "go_down": [
-            ("thumbs_down", 70),
-            ("index_down", 70),
-        ],
-        "rotate": [
-            ("stop", 70),
-        ],
+        "thumb_up": 10,
+        "thumb_down": 10,
+        "index_up": 10,
+        "index_down": 10,
+        "rotate": 10,
     }
     
     # Create output directories
@@ -242,80 +288,79 @@ def main():
     total_failed = 0
     
     # Generate images for each class
-    for class_name, variants in dataset_config.items():
+    for class_name, count in dataset_config.items():
         class_id = class_to_id[class_name]
-        print(f"\n📦 Generating {class_name} (class_id={class_id})")
-        print(f"   Variants: {variants}")
+        print(f"\n📦 Generating {class_name} (class_id={class_id}): {count} samples")
         
-        global_index = 1  # Global index for this class
+        # Find next available index for this class (continues from existing files)
+        global_index = get_next_index_for_class(class_name, images_dir)
+        if global_index > 1:
+            print(f"   📌 Continuing from index {global_index:03d} (found existing files)")
         
-        for gesture_type, count in variants:
-            print(f"\n   🎯 {gesture_type}: {count} samples")
+        for i in range(count):
+            sample_index = global_index
+            prompt = build_prompt(class_name, sample_index)
             
-            for i in range(count):
-                sample_index = global_index
-                prompt = build_prompt(class_name, gesture_type, sample_index)
+            print(f"      [{sample_index:03d}] Generating...", end=" ", flush=True)
+            
+            image_b64, labels_json = generate_image(api_key, prompt)
+            
+            if not image_b64:
+                print("❌ Failed (no image)")
+                total_failed += 1
+                continue
+            
+            # Extract labels
+            labels = []
+            if labels_json:
+                if "labels" in labels_json:
+                    labels = labels_json["labels"]
+                elif isinstance(labels_json, list):
+                    labels = labels_json
+                else:
+                    labels = [labels_json]
+            
+            if not labels:
+                print("❌ Failed (no labels)")
+                total_failed += 1
+                continue
+            
+            # Get the first label (should be the hand)
+            label = labels[0]
+            center_x = float(label.get("center_x", 0.5))
+            center_y = float(label.get("center_y", 0.5))
+            width = float(label.get("width", 0.3))
+            height = float(label.get("height", 0.3))
+            
+            # Validate coordinates
+            if not (0 <= center_x <= 1 and 0 <= center_y <= 1 and 0 < width <= 1 and 0 < height <= 1):
+                print("❌ Failed (invalid coordinates)")
+                total_failed += 1
+                continue
+            
+            # Save image
+            try:
+                image_data = base64.b64decode(image_b64)
+                image = Image.open(BytesIO(image_data))
+                image_filename = f"{class_name}_{sample_index:03d}.jpg"
+                image_path = images_dir / image_filename
+                image.save(image_path, "JPEG")
                 
-                print(f"      [{sample_index:03d}] Generating...", end=" ", flush=True)
+                # Save label
+                label_filename = f"{class_name}_{sample_index:03d}.txt"
+                label_path = labels_dir / label_filename
+                save_yolo_label(label_path, class_id, center_x, center_y, width, height)
                 
-                image_b64, labels_json = generate_image(api_key, prompt)
+                print(f"✅ Saved ({image.size[0]}x{image.size[1]}, bbox: {width:.3f}x{height:.3f})")
+                total_generated += 1
+                global_index += 1
                 
-                if not image_b64:
-                    print("❌ Failed (no image)")
-                    total_failed += 1
-                    continue
-                
-                # Extract labels
-                labels = []
-                if labels_json:
-                    if "labels" in labels_json:
-                        labels = labels_json["labels"]
-                    elif isinstance(labels_json, list):
-                        labels = labels_json
-                    else:
-                        labels = [labels_json]
-                
-                if not labels:
-                    print("❌ Failed (no labels)")
-                    total_failed += 1
-                    continue
-                
-                # Get the first label (should be the hand)
-                label = labels[0]
-                center_x = float(label.get("center_x", 0.5))
-                center_y = float(label.get("center_y", 0.5))
-                width = float(label.get("width", 0.3))
-                height = float(label.get("height", 0.3))
-                
-                # Validate coordinates
-                if not (0 <= center_x <= 1 and 0 <= center_y <= 1 and 0 < width <= 1 and 0 < height <= 1):
-                    print("❌ Failed (invalid coordinates)")
-                    total_failed += 1
-                    continue
-                
-                # Save image
-                try:
-                    image_data = base64.b64decode(image_b64)
-                    image = Image.open(BytesIO(image_data))
-                    image_filename = f"{class_name}_{sample_index:03d}.jpg"
-                    image_path = images_dir / image_filename
-                    image.save(image_path, "JPEG")
-                    
-                    # Save label
-                    label_filename = f"{class_name}_{sample_index:03d}.txt"
-                    label_path = labels_dir / label_filename
-                    save_yolo_label(label_path, class_id, center_x, center_y, width, height)
-                    
-                    print(f"✅ Saved ({image.size[0]}x{image.size[1]}, bbox: {width:.3f}x{height:.3f})")
-                    total_generated += 1
-                    global_index += 1
-                    
-                except Exception as e:
-                    print(f"❌ Failed (save error: {e})")
-                    total_failed += 1
-                
-                # Small delay to avoid rate limiting
-                time.sleep(0.5)
+            except Exception as e:
+                print(f"❌ Failed (save error: {e})")
+                total_failed += 1
+            
+            # Delay to avoid rate limiting (increased for Vertex AI)
+            time.sleep(2.0)
     
     print("\n" + "="*60)
     print("✅ Dataset generation complete!")

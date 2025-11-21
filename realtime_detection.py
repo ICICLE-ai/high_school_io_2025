@@ -23,8 +23,8 @@ def load_model(model_path=None):
     if model_path is None:
         # Try to find the best model from training (prioritize yolo_training2)
         possible_paths = [
-            "runs/detect/yolo_training2/weights/best.pt",
-            "runs/detect/yolo_training2/weights/last.pt",
+            "runs/detect/yolo_training/weights/best.pt",
+            "runs/detect/yolo_training/weights/last.pt",
             "runs/detect/yolo_training/weights/best.pt",
             "runs/detect/yolo_training/weights/last.pt",
             "best.pt",
@@ -52,9 +52,11 @@ def load_model(model_path=None):
 def get_class_colors():
     """Return color mapping for each class"""
     return {
-        0: (0, 255, 0),      # go_up - Green
-        1: (0, 0, 255),      # go_down - Red
-        2: (255, 0, 0),      # rotate - Blue
+        0: (0, 255, 0),      # thumb_up - Green
+        1: (0, 0, 255),      # thumb_down - Red
+        2: (255, 0, 0),      # index_up - Blue
+        3: (255, 165, 0),    # index_down - Orange
+        4: (128, 0, 128),    # rotate (stop sign) - Purple
     }
 
 
@@ -140,8 +142,14 @@ def main():
     CAMERA_ID = 0  # Usually 0 for default camera, try 1 if 0 doesn't work
     WINDOW_NAME = "Real-time Gesture Detection"
     
-    # Class names (must match training: go_up=0, go_down=1, rotate=2)
-    CLASS_NAMES = ["go_up", "go_down", "rotate"]
+    # Class names (must match training order)
+    CLASS_NAMES = [
+        "thumb_up",
+        "thumb_down",
+        "index_up",
+        "index_down",
+        "rotate",
+    ]
     
     print("=" * 60)
     print("Real-time YOLO Gesture Detection")

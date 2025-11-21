@@ -4,7 +4,6 @@ YOLO Ultralytics Training Script
 Automatically splits data into train/val/test and trains a YOLO model
 """
 
-import os
 import shutil
 import random
 from pathlib import Path
@@ -29,8 +28,10 @@ def setup_dataset(data_dir="test_data", output_dir="yolo_dataset", train_ratio=0
     # Validate ratios
     assert abs(train_ratio + val_ratio + test_ratio - 1.0) < 1e-6, "Ratios must sum to 1.0"
     
-    # Get all image files
-    image_files = sorted(list(images_dir.glob("*.jpg")))
+    # Get all image files (both .jpg and .jpeg)
+    image_files = sorted(
+        list(images_dir.glob("*.jpg")) + list(images_dir.glob("*.jpeg"))
+    )
     print(f"Found {len(image_files)} images")
     
     # Shuffle with fixed seed for reproducibility
@@ -114,7 +115,7 @@ def train_yolo(
             else:
                 device = "cpu"
                 print("Using CPU (MPS not available)")
-        except:
+        except Exception:
             device = "cpu"
             print("Using CPU")
     
@@ -133,7 +134,7 @@ def train_yolo(
         val=True,
     )
     
-    print(f"\nTraining completed!")
+    print("\nTraining completed!")
     print(f"Results saved in {project}/{name}/")
     
     # Evaluate on test set
@@ -156,7 +157,13 @@ def create_data_yaml(dataset_dir, output_path="dataset.yaml", class_names=None):
                      Order determines class IDs: index 0 = class 0, index 1 = class 1, etc.
     """
     if class_names is None:
-        class_names = ["go_up", "go_down", "rotate"]  # go_up=0, go_down=1, rotate=2
+        class_names = [
+            "thumb_up",
+            "thumb_down",
+            "index_up",
+            "index_down",
+            "rotate",
+        ]  # Order determines class IDs
     
     dataset_path = Path(dataset_dir).absolute()
     
@@ -186,8 +193,8 @@ def main():
     DATASET_YAML = "dataset.yaml"
     
     # Split ratios
-    TRAIN_RATIO = 0.7
-    VAL_RATIO = 0.2
+    TRAIN_RATIO = 0.8
+    VAL_RATIO = 0.1
     TEST_RATIO = 0.1
     
     # Training parameters
@@ -196,8 +203,14 @@ def main():
     IMG_SIZE = 640
     BATCH_SIZE = 16  # Adjust based on your Mac's memory
     
-    # Class names (order determines class IDs: go_up=0, go_down=1, rotate=2)
-    CLASS_NAMES = ["go_up", "go_down", "rotate"]
+    # Class names (order determines class IDs)
+    CLASS_NAMES = [
+        "thumb_up",
+        "thumb_down",
+        "index_up",
+        "index_down",
+        "rotate",
+    ]
     
     print("=" * 60)
     print("YOLO Ultralytics Training Script")
@@ -212,6 +225,7 @@ def main():
         val_ratio=VAL_RATIO,
         test_ratio=TEST_RATIO
     )
+    print(f"Dataset prepared at {dataset_path}")
     
     # Step 2: Create dataset.yaml
     print("\n[2/3] Creating dataset.yaml...")
@@ -238,8 +252,8 @@ def main():
     
     print("\n" + "=" * 60)
     print("Training pipeline completed!")
-    print(f"Best model: runs/detect/yolo_training/weights/best.pt")
-    print(f"Last model: runs/detect/yolo_training/weights/last.pt")
+    print("Best model: runs/detect/yolo_training/weights/best.pt")
+    print("Last model: runs/detect/yolo_training/weights/last.pt")
     print("=" * 60)
 
 
