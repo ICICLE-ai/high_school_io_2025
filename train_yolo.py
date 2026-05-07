@@ -4,11 +4,64 @@ YOLO Ultralytics Training Script
 Automatically splits data into train/val/test and trains a YOLO model
 """
 
-import os
 import shutil
 import random
+from collections import defaultdict
 from pathlib import Path
-from ultralytics import YOLO
+
+from gesture_config import CLASS_NAMES
+
+IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
+
+
+def extract_class_name(image_path: Path) -> str:
+    """Extract the snake_case class name from filenames like class_name_001.jpg."""
+    stem_parts = image_path.stem.rsplit("_", 1)
+    if len(stem_parts) == 2 and stem_parts[1].isdigit():
+        return stem_parts[0]
+    return image_path.stem
+
+
+def build_stratified_splits(image_files, train_ratio, val_ratio, test_ratio, seed=42):
+    """Split each class independently so every split stays balanced."""
+    grouped_images = defaultdict(list)
+    for image_path in image_files:
+        grouped_images[extract_class_name(image_path)].append(image_path)
+
+    rng = random.Random(seed)
+    splits = {
+        "train": [],
+        "val": [],
+        "test": [],
+    }
+    split_summary = {}
+
+    for class_name, class_images in sorted(grouped_images.items()):
+        class_images = sorted(class_images)
+        rng.shuffle(class_images)
+
+        n_total = len(class_images)
+        n_train = int(n_total * train_ratio)
+        n_val = int(n_total * val_ratio)
+
+        train_images = class_images[:n_train]
+        val_images = class_images[n_train:n_train + n_val]
+        test_images = class_images[n_train + n_val:]
+
+        splits["train"].extend(train_images)
+        splits["val"].extend(val_images)
+        splits["test"].extend(test_images)
+        split_summary[class_name] = {
+            "train": len(train_images),
+            "val": len(val_images),
+            "test": len(test_images),
+            "total": n_total,
+        }
+
+    for split_name in splits:
+        splits[split_name] = sorted(splits[split_name], key=lambda path: path.name)
+
+    return splits, split_summary
 
 
 def setup_dataset(data_dir="test_data", output_dir="yolo_dataset", train_ratio=0.7, val_ratio=0.2, test_ratio=0.1):
@@ -29,33 +82,34 @@ def setup_dataset(data_dir="test_data", output_dir="yolo_dataset", train_ratio=0
     # Validate ratios
     assert abs(train_ratio + val_ratio + test_ratio - 1.0) < 1e-6, "Ratios must sum to 1.0"
     
-    # Get all image files
-    image_files = sorted(list(images_dir.glob("*.jpg")))
+    image_files = sorted(
+        path for path in images_dir.iterdir()
+        if path.is_file() and path.suffix.lower() in IMAGE_EXTENSIONS
+    )
     print(f"Found {len(image_files)} images")
-    
-    # Shuffle with fixed seed for reproducibility
-    random.seed(42)
-    random.shuffle(image_files)
-    
-    # Calculate split indices
-    n_total = len(image_files)
-    n_train = int(n_total * train_ratio)
-    n_val = int(n_total * val_ratio)
-    
-    train_images = image_files[:n_train]
-    val_images = image_files[n_train:n_train + n_val]
-    test_images = image_files[n_train + n_val:]
-    
-    print(f"Split: {len(train_images)} train, {len(val_images)} val, {len(test_images)} test")
-    
-    # Create YOLO dataset structure
+
+    splits, split_summary = build_stratified_splits(
+        image_files=image_files,
+        train_ratio=train_ratio,
+        val_ratio=val_ratio,
+        test_ratio=test_ratio,
+    )
+
+    print(
+        f"Split: {len(splits['train'])} train, "
+        f"{len(splits['val'])} val, {len(splits['test'])} test"
+    )
+    print("Per-class distribution:")
+    for class_name, stats in split_summary.items():
+        print(
+            f"  - {class_name}: {stats['train']} train, {stats['val']} val, "
+            f"{stats['test']} test (total={stats['total']})"
+        )
+
     output_path = Path(output_dir)
-    splits = {
-        "train": train_images,
-        "val": val_images,
-        "test": test_images
-    }
-    
+    if output_path.exists():
+        shutil.rmtree(output_path)
+
     for split_name, split_images in splits.items():
         split_images_dir = output_path / split_name / "images"
         split_labels_dir = output_path / split_name / "labels"
@@ -82,6 +136,7 @@ def train_yolo(
     data_yaml_path,
     model_size="n",  # n, s, m, l, x
     epochs=100,
+    patience=None,
     imgsz=640,
     batch=16,
     device=None,  # Auto-detect if None
@@ -95,6 +150,7 @@ def train_yolo(
         data_yaml_path: Path to dataset.yaml file
         model_size: YOLO model size (nano, small, medium, large, xlarge)
         epochs: Number of training epochs
+        patience: Early stopping patience. Defaults to `epochs` to avoid stopping short.
         imgsz: Image size for training
         batch: Batch size
         device: Device to use (mps for Mac M1/M2, cpu, or cuda)
@@ -102,6 +158,8 @@ def train_yolo(
         name: Experiment name
     """
     # Initialize model
+    from ultralytics import YOLO
+
     model = YOLO(f"yolov8{model_size}.pt")  # Load pretrained weights
     
     # Auto-detect device if not specified
@@ -114,9 +172,12 @@ def train_yolo(
             else:
                 device = "cpu"
                 print("Using CPU (MPS not available)")
-        except:
+        except Exception:
             device = "cpu"
             print("Using CPU")
+
+    if patience is None:
+        patience = epochs
     
     # Train the model
     results = model.train(
@@ -127,13 +188,13 @@ def train_yolo(
         device=device,
         project=project,
         name=name,
-        patience=50,  # Early stopping patience
+        patience=patience,
         save=True,
         plots=True,
         val=True,
     )
     
-    print(f"\nTraining completed!")
+    print("\nTraining completed!")
     print(f"Results saved in {project}/{name}/")
     
     # Evaluate on test set
@@ -156,7 +217,7 @@ def create_data_yaml(dataset_dir, output_path="dataset.yaml", class_names=None):
                      Order determines class IDs: index 0 = class 0, index 1 = class 1, etc.
     """
     if class_names is None:
-        class_names = ["go_up", "go_down", "rotate"]  # go_up=0, go_down=1, rotate=2
+        class_names = CLASS_NAMES  # Order determines class IDs
     
     dataset_path = Path(dataset_dir).absolute()
     
@@ -186,8 +247,8 @@ def main():
     DATASET_YAML = "dataset.yaml"
     
     # Split ratios
-    TRAIN_RATIO = 0.7
-    VAL_RATIO = 0.2
+    TRAIN_RATIO = 0.8
+    VAL_RATIO = 0.1
     TEST_RATIO = 0.1
     
     # Training parameters
@@ -196,9 +257,7 @@ def main():
     IMG_SIZE = 640
     BATCH_SIZE = 16  # Adjust based on your Mac's memory
     
-    # Class names (order determines class IDs: go_up=0, go_down=1, rotate=2)
-    CLASS_NAMES = ["go_up", "go_down", "rotate"]
-    
+    # Class names (order determines class IDs)
     print("=" * 60)
     print("YOLO Ultralytics Training Script")
     print("=" * 60)
@@ -212,6 +271,7 @@ def main():
         val_ratio=VAL_RATIO,
         test_ratio=TEST_RATIO
     )
+    print(f"Dataset prepared at {dataset_path}")
     
     # Step 2: Create dataset.yaml
     print("\n[2/3] Creating dataset.yaml...")
@@ -238,11 +298,10 @@ def main():
     
     print("\n" + "=" * 60)
     print("Training pipeline completed!")
-    print(f"Best model: runs/detect/yolo_training/weights/best.pt")
-    print(f"Last model: runs/detect/yolo_training/weights/last.pt")
+    print("Best model: runs/detect/yolo_training/weights/best.pt")
+    print("Last model: runs/detect/yolo_training/weights/last.pt")
     print("=" * 60)
 
 
 if __name__ == "__main__":
     main()
-
