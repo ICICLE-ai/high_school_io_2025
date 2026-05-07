@@ -9,6 +9,8 @@ import time
 from pathlib import Path
 from ultralytics import YOLO
 
+from gesture_config import CLASS_COLORS, CLASS_NAMES
+
 
 def load_model(model_path=None):
     """
@@ -23,12 +25,7 @@ def load_model(model_path=None):
     if model_path is None:
         # Try to find the best model from training (prioritize yolo_training2)
         possible_paths = [
-            "runs/detect/yolo_training/weights/best.pt",
-            "runs/detect/yolo_training/weights/last.pt",
-            "runs/detect/yolo_training/weights/best.pt",
-            "runs/detect/yolo_training/weights/last.pt",
-            "best.pt",
-            "last.pt"
+            "runs/detect/yolo_training3/weights/best.pt",
         ]
         
         for path in possible_paths:
@@ -51,13 +48,7 @@ def load_model(model_path=None):
 
 def get_class_colors():
     """Return color mapping for each class"""
-    return {
-        0: (0, 255, 0),      # thumb_up - Green
-        1: (0, 0, 255),      # thumb_down - Red
-        2: (255, 0, 0),      # index_up - Blue
-        3: (255, 165, 0),    # index_down - Orange
-        4: (128, 0, 128),    # rotate (stop sign) - Purple
-    }
+    return CLASS_COLORS
 
 
 def draw_detections(frame, results, class_names, conf_threshold=0.25):
@@ -138,18 +129,9 @@ def main():
     """Main real-time detection loop"""
     # Configuration
     MODEL_PATH = None  # Auto-detect (prioritizes yolo_training2), or specify: "runs/detect/yolo_training2/weights/best.pt"
-    CONF_THRESHOLD = 0.6  # Confidence threshold (0.0 to 1.0) - Set to 0.6 for higher precision
+    CONF_THRESHOLD = 0.1  # Confidence threshold (0.0 to 1.0) - Lower default to catch more detections
     CAMERA_ID = 0  # Usually 0 for default camera, try 1 if 0 doesn't work
     WINDOW_NAME = "Real-time Gesture Detection"
-    
-    # Class names (must match training order)
-    CLASS_NAMES = [
-        "thumb_up",
-        "thumb_down",
-        "index_up",
-        "index_down",
-        "rotate",
-    ]
     
     print("=" * 60)
     print("Real-time YOLO Gesture Detection")
@@ -193,12 +175,12 @@ def main():
     print("\n" + "=" * 60)
     print("Controls:")
     print("  - Press 'q' to quit")
-    print("  - Press 'c' to cycle confidence threshold (0.1, 0.15, 0.25, 0.5)")
+    print("  - Press 'c' to cycle confidence threshold (0.1, 0.2, 0.3, 0.5)")
     print("  - Press '+' or '=' to increase confidence by 0.05 (up to 0.99)")
     print("  - Press '-' to decrease confidence by 0.05 (down to 0.05)")
-    print("  - Press '1' to set threshold to 0.6")
-    print("  - Press '2' to set threshold to 0.7")
-    print("  - Press '3' to set threshold to 0.8")
+    print("  - Press '1' to set threshold to 0.3")
+    print("  - Press '2' to set threshold to 0.5")
+    print("  - Press '3' to set threshold to 0.7")
     print("  - Press '4' to set threshold to 0.9")
     print(f"  - Current confidence threshold: {CONF_THRESHOLD}")
     print("  - Check console for detection details (updated every second)")
@@ -291,10 +273,12 @@ def main():
                 # Cycle through confidence thresholds
                 if current_conf >= 0.5:
                     current_conf = 0.1
-                elif current_conf >= 0.25:
-                    current_conf = 0.15
-                elif current_conf >= 0.15:
-                    current_conf = 0.25
+                elif current_conf >= 0.3:
+                    current_conf = 0.1
+                elif current_conf >= 0.2:
+                    current_conf = 0.3
+                elif current_conf >= 0.1:
+                    current_conf = 0.2
                 else:
                     current_conf = 0.5
                 print(f"🔧 Confidence threshold changed to: {current_conf}")
@@ -307,16 +291,16 @@ def main():
                 current_conf = max(0.05, current_conf - 0.05)
                 print(f"🔧 Confidence threshold decreased to: {current_conf:.2f}")
             elif key == ord('1'):
-                # Quick set to 0.6
-                current_conf = 0.6
+                # Quick set to 0.3
+                current_conf = 0.3
                 print(f"🔧 Confidence threshold set to: {current_conf:.2f}")
             elif key == ord('2'):
-                # Quick set to 0.7
-                current_conf = 0.7
+                # Quick set to 0.5
+                current_conf = 0.5
                 print(f"🔧 Confidence threshold set to: {current_conf:.2f}")
             elif key == ord('3'):
-                # Quick set to 0.8
-                current_conf = 0.8
+                # Quick set to 0.7
+                current_conf = 0.7
                 print(f"🔧 Confidence threshold set to: {current_conf:.2f}")
             elif key == ord('4'):
                 # Quick set to 0.9
@@ -335,4 +319,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

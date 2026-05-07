@@ -36,6 +36,8 @@ import requests
 from dotenv import load_dotenv
 from PIL import Image
 
+from gesture_config import CLASS_NAMES, CLASS_TO_ID
+
 
 def build_prompt(class_name: str, sample_index: int) -> str:
     """Build the prompt for image generation."""
@@ -53,9 +55,8 @@ def build_prompt(class_name: str, sample_index: int) -> str:
     gesture_descriptions = {
         "thumb_up": "thumbs up gesture",
         "thumb_down": "thumbs down gesture",
-        "index_up": "index finger pointing up gesture",
-        "index_down": "index finger pointing down gesture",
         "rotate": "stop hand sign with the palm facing forward",
+        "peace_sign": "raised index and middle fingers in a V sign gesture",
     }
     
     gesture_desc = gesture_descriptions[class_name]
@@ -255,23 +256,7 @@ def main():
         print("❌ Error: GOOGLE_API_KEY not found in environment")
         sys.exit(1)
     
-    # Class mapping
-    class_to_id = {
-        "thumb_up": 0,
-        "thumb_down": 1,
-        "index_up": 2,
-        "index_down": 3,
-        "rotate": 4,
-    }
-    
-    # Dataset configuration - each class with its count
-    dataset_config = {
-        "thumb_up": 10,
-        "thumb_down": 10,
-        "index_up": 10,
-        "index_down": 10,
-        "rotate": 10,
-    }
+    dataset_config = {class_name: 10 for class_name in CLASS_NAMES}
     
     # Create output directories
     output_dir = Path("test_data")
@@ -289,7 +274,7 @@ def main():
     
     # Generate images for each class
     for class_name, count in dataset_config.items():
-        class_id = class_to_id[class_name]
+        class_id = CLASS_TO_ID[class_name]
         print(f"\n📦 Generating {class_name} (class_id={class_id}): {count} samples")
         
         # Find next available index for this class (continues from existing files)
