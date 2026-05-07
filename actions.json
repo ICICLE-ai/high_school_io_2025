@@ -1,0 +1,52 @@
+{
+    "thumb_up": {
+        "component": "piloting",
+        "action": "move_by",
+        "args": [0, 1, 0, 0],
+        "kwargs": {"wait": false},
+        "max_executions": null,
+        "balance": {
+            "group": "vertical",
+            "delta": 1,
+            "min": 0,
+            "max": 2,
+            "arg_index": 1
+        }
+    },
+    "thumb_down": {
+        "component": "piloting",
+        "action": "move_by",
+        "args": [0, -1, 0, 0],
+        "kwargs": {"wait": false},
+        "max_executions": null,
+        "balance": {
+            "group": "vertical",
+            "delta": -1,
+            "min": 0,
+            "max": 2,
+            "arg_index": 1
+        }
+    },
+    "rotate": {
+        "component": "piloting",
+        "action": "move_by",
+        "args": [0, 0, 0, 180],
+        "kwargs": {"wait": false},
+        "max_executions": null
+    },
+    "peace_sign": {
+        "component": "piloting",
+        "action": "move_by",
+        "args": [1, 0, 0, 0],
+        "kwargs": {"wait": false},
+        "max_executions": null,
+        "balance": {
+            "group": "forward_back",
+            "delta": 1,
+            "min": -2,
+            "max": 2,
+            "arg_index": 0,
+            "auto_reverse": true
+        }
+    }
+}
