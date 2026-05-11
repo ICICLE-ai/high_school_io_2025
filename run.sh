@@ -1,0 +1,1 @@
+/home/icicle/anaconda3/envs/dynamic_gestures/bin/python main.py
