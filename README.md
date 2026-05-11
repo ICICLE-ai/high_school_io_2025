@@ -1,10 +1,30 @@
-# YOLO Gesture Detection Project
+# Gesture-Controlled Drone
 
-A complete pipeline for training and deploying a YOLO-based gesture detection model. This project uses Google Gemini API to generate synthetic training data, trains a YOLO model using Ultralytics, and provides real-time gesture detection via webcam.
+Control a Parrot Anafi drone with hand gestures — no model training required. Show your hand to a webcam and the app maps what it sees to drone commands you define in a simple config file (`actions.json`).
 
 **Tags:** Software, AI4CI
 
 For guidance on what to include in Tutorials, How-To Guides, Explanation, and Reference, see [Diátaxis](https://diataxis.fr/).
+
+---
+
+## Quick Start
+
+```bash
+# 1. Install dependencies (see Setup below for conda path)
+pip install -r requirements.txt
+
+# 2. Run in test mode — no drone needed
+bash run.sh
+# or directly:
+python main.py
+```
+
+A window opens with your webcam feed. Show a hand gesture — bounding boxes appear on screen and the detected gesture prints in the terminal. Nothing connects to a drone in test mode.
+
+> **`run.sh`** is a convenience script for Anaconda users. It activates the `dynamic_gestures` conda environment then runs `main.py`. If you're not using conda, just run `python main.py` directly.
+
+---
 
 ### License
 
@@ -12,8 +32,9 @@ For guidance on what to include in Tutorials, How-To Guides, Explanation, and Re
 
 ## References
 
-- [Ultralytics YOLO](https://docs.ultralytics.com/) — YOLO model training and inference framework.
-- [Google Gemini API](https://ai.google.dev/gemini-api/docs) — generative model used to produce synthetic training images.
+- [HaGRID Dynamic Gestures](https://github.com/hukenovs/hagrid) — gesture dataset and ONNX models used for detection.
+- [SoftwarePilot](https://github.com/AutonoFly/SoftwarePilot) — drone control library used in live mode.
+- [Ultralytics YOLO](https://docs.ultralytics.com/) — YOLO framework (detachable alternative detection engine).
 - [Diátaxis](https://diataxis.fr/) — documentation framework used to structure this README.
 
 ## Acknowledgements
@@ -22,7 +43,7 @@ For guidance on what to include in Tutorials, How-To Guides, Explanation, and Re
 
 ## Issue reporting
 
-Please report issues at [https://github.com/ICICLE-ai/high_school_io_2025/issues](https://github.com/ICICLE-ai/high_school_io_2025/issues).
+Please report issues at [https://github.com/ICICLE-ai/high_school_io_2026/issues](https://github.com/ICICLE-ai/high_school_io_2026/issues).
 
 ---
 
@@ -30,297 +51,262 @@ Please report issues at [https://github.com/ICICLE-ai/high_school_io_2025/issues
 
 ## Features
 
-- **Synthetic Data Generation**: Uses Google Gemini 2.5 Flash Image API to generate diverse training images with bounding boxes
-- **YOLO Training**: Automated training pipeline with train/val/test splits
-- **Real-time Detection**: Live webcam gesture detection with interactive controls
-- **4-Class Gesture Recognition**: Detects thumb_up, thumb_down, rotate, and peace_sign gestures
+- **No Training Needed**: Uses pre-trained ONNX models — just run and go
+- **45+ Gesture Classes**: Detects a wide range of hand gestures out of the box (like, dislike, fist, peace, stop, ok, point, and more)
+- **Easy Action Config**: Map any gesture to a drone command by editing `actions.json` — no code changes needed
+- **Test & Live Modes**: Run safely with no drone connected (`test`) or send real flight commands (`live`)
+- **Bounded Movement**: Built-in position tracking prevents the drone from flying too far in any direction
+- **Swappable Detection Engine**: YOLO or any other detector can be plugged in with a one-line change
 
 ## Project Structure
 
 ```
-high_school_io_2025/
-├── test_gemini_image.py      # Generate synthetic dataset using Gemini API
-├── train_yolo.py             # Train YOLO model with automatic data splitting
-├── realtime_detection.py     # Real-time gesture detection via webcam
-├── dataset.yaml              # YOLO dataset configuration
-├── test_data/                # Generated images and labels
-│   ├── images/
-│   └── labels/
-├── yolo_dataset/             # Organized train/val/test splits
-│   ├── train/
-│   ├── val/
-│   └── test/
-└── runs/detect/              # Training outputs and model weights
+high_school_io_2026/
+├── main.py              ← the app — start here
+├── actions.json         ← configure which gestures do what
+├── run.sh               ← launches via the conda environment
+├── requirements.txt     ← all Python dependencies
+└── dynamic_gestures/    ← gesture detection engine (pre-trained, no edits needed)
+    ├── models/
+    │   ├── hand_detector.onnx      ← finds hands in the frame
+    │   └── crops_classifier.onnx   ← classifies which gesture is shown
+    ├── main_controller.py          ← glues the two models together
+    └── utils/
+        └── enums.py                ← full list of gesture labels
 ```
 
 ## Setup
 
 ### 1. Install Dependencies
 
+**With conda (recommended if you have Anaconda):**
+
 ```bash
+conda create -n dynamic_gestures python=3.9 -y
+conda activate dynamic_gestures
 pip install -r requirements.txt
 ```
 
-### 2. Configure Environment
+Then use `bash run.sh` to launch — it activates the `dynamic_gestures` environment automatically.
 
-Create a `.env` file in the project root:
+**Without conda:**
 
 ```bash
-# Google Gemini API Key
-# Get your API key from: https://makersuite.google.com/app/apikey
-GOOGLE_API_KEY=your_api_key_here
+pip install -r requirements.txt
+python main.py
 ```
+
+No API keys. No model training. The pre-trained gesture models are already included in `dynamic_gestures/models/`.
 
 ## Usage
 
-### Step 1: Generate Synthetic Dataset
-
-Generate training images using Google Gemini API:
+### Running the App
 
 ```bash
-python test_gemini_image.py
+bash run.sh       # if using conda
+# or
+python main.py    # if using a regular Python environment
 ```
 
-**What it does:**
-- Generates synthetic images for 4 gesture classes using Gemini API
-- Creates tight bounding boxes around hands in each image
-- Saves images and YOLO-format labels to `test_data/`
-- Default: 10 samples per class (configurable in script)
+Press `q` in the webcam window to quit.
 
-**Classes Generated:**
-- `thumb_up` (class_id: 0) - Thumbs up gesture
-- `thumb_down` (class_id: 1) - Thumbs down gesture
-- `rotate` (class_id: 2) - Stop hand sign (palm facing forward)
-- `peace_sign` (class_id: 3) - Raised index and middle fingers in a V sign gesture
+---
 
-**Output Structure:**
-```
-test_data/
-├── images/
-│   ├── thumb_up_001.jpg
-│   ├── thumb_up_002.jpg
-│   ├── thumb_down_001.jpg
-│   └── ...
-└── labels/
-    ├── thumb_up_001.txt
-    ├── thumb_up_002.txt
-    ├── thumb_down_001.txt
-    └── ...
+### Modes: test vs live
+
+Open `main.py` and look at **line 17**:
+
+```python
+RUN_MODE = "test"
 ```
 
-**Customizing Generation:**
-Edit `test_gemini_image.py` to modify:
-- Number of samples per class (default: 10)
-- Class configuration in `dataset_config` dictionary
-- Prompt variations for diversity
+| Mode | What it does |
+|------|-------------|
+| `"test"` | Opens the webcam, detects gestures, prints results to terminal. **No drone connection.** Safe to run anywhere. |
+| `"live"` | Connects to a real Parrot Anafi drone and sends flight commands when gestures are detected. |
 
-### Step 2: Train YOLO Model
+To switch to live mode, change that line to:
 
-Train the YOLO model with automatic data splitting:
-
-```bash
-python train_yolo.py
+```python
+RUN_MODE = "live"
 ```
 
-**What it does:**
-- Automatically splits data into stratified train/val/test sets (default: 80/10/10 per class)
-- Creates YOLO dataset structure in `yolo_dataset/`
-- Generates `dataset.yaml` configuration file
-- Trains YOLO model (default: YOLOv8n nano model)
-- Auto-detects device (MPS for Mac M1/M2, CPU otherwise)
+---
 
-**Training Configuration:**
-Edit `train_yolo.py` to customize:
-- `MODEL_SIZE`: 'n' (nano), 's' (small), 'm' (medium), 'l' (large), 'x' (xlarge)
-- `EPOCHS`: Number of training epochs (default: 100)
-- `BATCH_SIZE`: Batch size (default: 16)
-- `TRAIN_RATIO`, `VAL_RATIO`, `TEST_RATIO`: Data split ratios
-- `CLASS_NAMES`: Class names (must match dataset.yaml)
-
-**Output:**
-- Best model: `runs/detect/yolo_training/weights/best.pt`
-- Last model: `runs/detect/yolo_training/weights/last.pt`
-- Training plots and metrics in `runs/detect/yolo_training/`
-
-### Step 3: Real-time Detection
-
-Run real-time gesture detection using your webcam:
-
-```bash
-python realtime_detection.py
-```
-
-**Features:**
-- Live webcam feed with bounding boxes and labels
-- Interactive confidence threshold adjustment
-- FPS display and detection count
-- Color-coded classes:
-  - Green: thumb_up
-  - Red: thumb_down
-  - Purple: rotate
-  - Yellow: peace_sign
-
-**Controls:**
-- `q`: Quit
-- `c`: Cycle confidence threshold (0.1, 0.2, 0.3, 0.5)
-- `+` or `=`: Increase confidence by 0.05
-- `-`: Decrease confidence by 0.05
-- `1`: Set threshold to 0.3
-- `2`: Set threshold to 0.5
-- `3`: Set threshold to 0.7
-- `4`: Set threshold to 0.9
-
-**Configuration:**
-Edit `realtime_detection.py` to customize:
-- `MODEL_PATH`: Path to model weights (auto-detects if None)
-- `CONF_THRESHOLD`: Default confidence threshold (default: 0.3)
-- `CAMERA_ID`: Camera device ID (default: 0)
-
-## Class Mapping
-
-The project uses 4 gesture classes with the following IDs:
-
-| Class Name | Class ID | Description |
-|------------|----------|-------------|
-| `thumb_up` | 0 | Thumbs up gesture |
-| `thumb_down` | 1 | Thumbs down gesture |
-| `rotate` | 2 | Stop hand sign (palm facing forward) |
-| `peace_sign` | 3 | Raised index and middle fingers in a V sign gesture |
-
-## Label Format
-
-Each label file (`.txt`) contains YOLO format annotations:
+### How Detection Works
 
 ```
-class_id center_x center_y width height
+Webcam frame
+     ↓
+Gesture Engine  (dynamic_gestures/ — two pre-trained ONNX models)
+     ↓
+Gesture label   (e.g. "like", "peace", "fist")
+     ↓
+actions.json lookup
+     ↓
+Drone command  ← sent only in "live" mode
+(or printed to terminal in "test" mode)
 ```
 
-All values are normalized (0-1). Example:
+- **Hand detector** finds your hand in the frame
+- **Gesture classifier** identifies which gesture you're making
+- A **2-second cooldown** between triggers prevents rapid repeated commands
+
+### Swapping the Detection Engine
+
+The original version used a YOLO model for detection. The gesture engine is a clean drop-in — to swap back to YOLO or any other detector, replace the `controller(frame)` call in `main.py` (lines 220–231) with your own model that returns `(bboxes, ids, labels)` arrays. Nothing else in `main.py` needs to change.
+
+---
+
+### Gestures Available
+
+Only gestures listed as keys in `actions.json` will trigger any action. Everything else is ignored. Common ones you can use:
+
+| Gesture | Description |
+|---------|-------------|
+| `like` | Thumbs up |
+| `dislike` | Thumbs down |
+| `fist` | Closed fist |
+| `peace` | Two fingers up (V sign) |
+| `stop` | Open palm facing forward |
+| `ok` | OK sign |
+| `point` | Index finger pointing |
+| `palm` | Open hand |
+| `one` | One finger up |
+
+Full list: see `targets` in `dynamic_gestures/utils/enums.py` (~45 gestures total).
+
+---
+
+### Configuring Actions (`actions.json`)
+
+This file maps gesture labels to drone commands. Each key is a gesture name and the value describes what to do.
+
+**Example:**
+
+```json
+"like": {
+    "component": "piloting",
+    "action": "move_by",
+    "args": [0, 1, 0, 0],
+    "kwargs": {"wait": false},
+    "max_executions": null,
+    "balance": {
+        "group": "vertical",
+        "delta": 1,
+        "min": 0,
+        "max": 2,
+        "arg_index": 1
+    }
+}
 ```
-0 0.523456 0.456789 0.234567 0.345678
-```
 
-## Dataset Configuration
+**Field breakdown:**
 
-The `dataset.yaml` file defines the dataset structure:
+| Field | What it means |
+|-------|--------------|
+| `component` | Which part of the drone to control (`"piloting"` = movement) |
+| `action` | The function to call (`"move_by"` moves the drone by a set amount) |
+| `args` | Numbers passed to the function. For `move_by`: `[forward, up, right, rotation]`. Value of `1` = 1 meter. |
+| `kwargs` | Extra options. `{"wait": false}` means don't wait for the move to finish. |
+| `max_executions` | How many times this gesture can fire. `null` = unlimited. |
+| `balance` | Optional. Keeps a position counter so paired gestures stay within safe bounds. |
 
-```yaml
-path: /path/to/yolo_dataset
-train: train/images
-val: val/images
-test: test/images
+**The balance system:**
 
-nc: 4
-names: ['thumb_up', 'thumb_down', 'rotate', 'peace_sign']
-```
+`balance` is used when two gestures are opposites — like up and down. It tracks a shared position counter to prevent the drone from flying too far.
+
+- `like` has `delta: 1` (moves up, adds 1 to counter) and `dislike` has `delta: -1` (moves down)
+- Both share `group: "vertical"` with `min: 0, max: 2`
+- Once the counter hits `2` (two moves up), `like` is blocked until `dislike` brings it back
+
+**Currently configured gestures:**
+
+| Gesture | Command | Effect |
+|---------|---------|--------|
+| `like` | `move_by(0, 1, 0, 0)` | Move up 1 m (max 2 steps up) |
+| `dislike` | `move_by(0, -1, 0, 0)` | Move down 1 m (max 2 steps down) |
+| `stop` | `move_by(0, 0, 0, 3.14)` | Rotate 180° |
+| `peace` | `move_by(1, 0, 0, 0)` | Move forward 1 m (max 2 steps forward) |
+| `fist` | `move_by(-1, 0, 0, 0)` | Move backward 1 m (max 2 steps back) |
+
+To add a new gesture, add an entry to `actions.json` using any label from the gesture list above.
 
 ## Requirements
 
-- Python 3.8+
-- PyTorch (with MPS support for Mac M1/M2)
-- Ultralytics YOLO
-- OpenCV
-- Google Gemini API key
+- Python 3.9+
+- A webcam
+- (For live mode only) A Parrot Anafi drone connected via Wi-Fi
 
-See `requirements.txt` for complete dependency list.
+See `requirements.txt` for the complete dependency list. Key packages: `opencv-python`, `numpy`, `torch`, `SoftwarePilot`.
 
 ## Notes
 
-- **API Key**: The Gemini API key is required for data generation. Get it from [Google AI Studio](https://makersuite.google.com/app/apikey)
-- **Model Weights**: Pre-trained YOLOv8 weights are automatically downloaded on first run
-- **Device Detection**: The training script automatically uses MPS (Metal Performance Shaders) on Mac M1/M2 for GPU acceleration
-- **Data Continuity**: The data generation script continues from existing indices, so you can add more samples without overwriting existing data
-- **Balanced Splits**: `train_yolo.py` now performs stratified splitting so each class stays evenly represented in train/val/test
-- **Confidence Threshold**: Higher thresholds (0.7-0.9) reduce false positives but may miss some detections
+- **No API key needed** — detection uses local ONNX models, no internet required
+- **No GPU required** — models run on CPU fine for real-time use
+- **Cooldown** — the default 2-second cooldown between gesture triggers is set in `main.py` line 208 (`cooldown_seconds = 2.0`)
+- **Camera index** — the app tries indices 0–4 automatically; to force a specific index, edit the `open_camera()` call in `main.py`
 
 ## Troubleshooting
 
-**Camera not opening:**
-- Try changing `CAMERA_ID` to 1 or check camera permissions
-- On Mac, grant camera permissions in System Settings
+**Camera doesn't open:**
+The app tries camera indices 0–4 automatically. If it fails on all of them, another application may be using the camera. Close it and try again.
 
-**Model not found:**
-- Ensure you've trained a model first using `train_yolo.py`
-- Or specify `MODEL_PATH` in `realtime_detection.py`
+**`run.sh` fails:**
+Check that your conda environment is named exactly `dynamic_gestures`. If you used a different name, either rename the env or edit `run.sh` to match.
 
-**API errors:**
-- Verify your `GOOGLE_API_KEY` is set correctly in `.env`
-- Check API quota and rate limits
-- The script includes automatic retry logic
+**Drone won't connect:**
+Make sure `RUN_MODE = "live"` in `main.py`, the drone is powered on, and your machine is connected to the drone's Wi-Fi.
 
-**Training issues:**
-- Reduce `BATCH_SIZE` if you run out of memory
-- Use smaller model size ('n' instead of 's', 'm', etc.)
-- Ensure you have enough training data (recommended: 100+ images per class)
+**Gesture detected but nothing happens:**
+Check that the gesture label printed in the terminal exists as a key in `actions.json`. Also check the 2-second cooldown — the same gesture won't fire again until it passes.
+
+**Gesture at its limit — no command sent:**
+If a `balance` group has hit its `max` or `min`, that direction is blocked. Show the opposite gesture to bring the counter back within range.
 
 ---
 
 # Explanation
 
-This project demonstrates an end-to-end pipeline that combines **generative AI** with **computer vision training** to bootstrap a working object detector without manually collecting and labelling images.
+This project uses **pre-trained hand gesture recognition** models to control a drone in real time — no data collection or model training required.
 
 ## Architecture
 
-The system is a four-stage pipeline. Each stage is a self-contained script that reads from one well-defined data artifact and writes to the next, so any stage can be re-run, swapped out, or inspected in isolation.
-
-Shape legend: **rectangles** are processes/scripts, **cylinders** are persisted data artifacts, **hexagons** are external services or hardware, **parallelograms** are user-facing I/O.
-
 ```mermaid
 flowchart LR
-    CFG["Class config<br/>+ prompts"] --> GEN["test_gemini_image.py"]
-    KEY[".env<br/>GOOGLE_API_KEY"] --> GEN
-    GEN <==>|"prompts ⇄ images + bboxes"| GEMINI(["Google Gemini<br/>2.5 Flash Image API"])
-    GEN --> RAW[("test_data/<br/>images + labels")]
-    RAW --> SPLIT["train_yolo.py<br/>stratified 80/10/10"]
-    SPLIT --> ORG[("yolo_dataset/<br/>train · val · test")]
-    SPLIT --> YAML[/"dataset.yaml"/]
-    ORG --> TRAIN["Ultralytics YOLO<br/>yolov8n + transfer learning"]
-    YAML --> TRAIN
-    TRAIN --> MODEL[("runs/detect/.../<br/>best.pt + metrics")]
-    MODEL --> INFER["realtime_detection.py"]
-    CAM(["Webcam"]) --> INFER
-    INFER --> UI[/"Live overlay:<br/>boxes · class · conf · FPS"/]
+    CAM(["Webcam"]) --> MAIN["main.py"]
+    MAIN <==>|"frame ⇄ bboxes + labels"| DG["dynamic_gestures/\nhand_detector.onnx\ncrops_classifier.onnx"]
+    MAIN --> CFG[/"actions.json"/]
+    CFG --> CMD["Drone Command"]
+    CMD -->|"live mode"| DRONE(["Parrot Anafi"])
+    CMD -->|"test mode"| LOG[/"Terminal output"/]
 ```
 
-### Reading the diagram
+## How `main.py` works
 
-- **Stage 1** is the only stage that reaches outside the repo — it consumes a `GOOGLE_API_KEY` and the class/prompt config, then round-trips with the Gemini API to materialise `test_data/`.
-- **Stage 2** is a pure local transform: it stratifies `test_data/` into `yolo_dataset/{train,val,test}/` and emits `dataset.yaml` so Ultralytics knows where to look.
-- **Stage 3** consumes both the organised dataset and `dataset.yaml`, picks the best available accelerator (MPS on Apple Silicon, CPU otherwise), and writes weights + training plots to `runs/detect/`.
-- **Stage 4** is decoupled from training — it only needs `best.pt` and a webcam, so you can ship the trained model anywhere a Python + OpenCV environment exists.
+`main.py` is the only script you need to run. Here is what happens each frame:
 
-## Stage 1 — Synthetic data generation with Gen AI
+1. **Read frame** — webcam feed is captured and flipped horizontally
+2. **Detect** — `controller(frame)` runs both ONNX models and returns bounding boxes, tracking IDs, and gesture labels
+3. **Cooldown check** — if less than 2 seconds have passed since the last action, skip
+4. **Action lookup** — the gesture label is looked up in `actions.json`
+5. **Balance check** — if the gesture has a `balance` config, the position counter is checked; the command is blocked if the limit is already reached
+6. **Execute** — in `live` mode the drone command is sent; in `test` mode it just prints and increments the counter
+7. **Draw** — bounding boxes and per-gesture counters are drawn on the frame
 
-Instead of collecting real photographs of every gesture, `test_gemini_image.py` calls Google's **Gemini 2.5 Flash Image** API. For each gesture class (`thumb_up`, `thumb_down`, `rotate`, `peace_sign`) the script:
+## Swapping the Detection Engine
 
-- Sends a prompt that describes the gesture and asks the model to generate a realistic image of a hand performing it.
-- Asks the model to return a tight bounding box around the hand, which is then converted into the YOLO label format (`class_id center_x center_y width height`, all normalized to `[0, 1]`).
-- Writes the image to `test_data/images/` and the matching label to `test_data/labels/`.
+The gesture engine inside `dynamic_gestures/` is a drop-in component. To swap it for YOLO or any other detector:
 
-The entire training corpus is **synthesised on demand** — you can grow the dataset by re-running the script, which continues from existing indices so previous samples are preserved.
+- Replace the `controller(frame)` call at `main.py` lines 220–231
+- Your replacement must return `(bboxes, ids, labels)` where `bboxes` is an `(N, 4)` array of `[x1, y1, x2, y2]` boxes and `labels` is a list of integer class indices
+- Update the `targets` list import to match your model's class names
 
-## Stage 2 — Splitting into a YOLO-friendly layout
-
-`train_yolo.py` doesn't train directly on `test_data/`. It first reorganises the synthetic data into the directory layout that Ultralytics expects:
-
-- A **stratified split** (default 80/10/10) is applied per class so train, val, and test each see every gesture in roughly the same proportion. This avoids the failure mode where validation accuracy looks great because one rare class happens to be missing from val.
-- The script materialises the result under `yolo_dataset/{train,val,test}/{images,labels}/` and writes a matching `dataset.yaml` that points at those paths and lists the four class names.
-
-## Stage 3 — Training the YOLO model
-
-With the dataset on disk, `train_yolo.py` hands off to Ultralytics:
-
-- Loads a pre-trained YOLOv8 backbone (default: nano `yolov8n`) so we transfer-learn instead of training from scratch.
-- Auto-selects MPS on Apple Silicon and falls back to CPU otherwise.
-- Trains for the configured number of epochs and saves `best.pt` / `last.pt` plus metric plots under `runs/detect/yolo_training*/`.
-
-## Stage 4 — Real-time inference
-
-`realtime_detection.py` loads `best.pt`, opens the webcam, and runs the detector frame-by-frame, drawing per-class boxes and an FPS counter. The confidence threshold can be tuned live with the keyboard so you can see how a synthetic-only training set generalises to real hands in real lighting.
+Nothing else in `main.py` needs to change.
 
 ## Why this design?
 
-- **Synthetic data is cheap.** Generating a balanced 4-class dataset takes minutes and zero manual labelling — ideal for a teaching/demo context.
-- **Stratified splitting matters.** Even with synthetic data, class-balanced val/test sets are needed to trust the metrics.
-- **Transfer learning over from-scratch.** Starting from pre-trained YOLO weights lets a small synthetic dataset still produce a usable detector.
-- **Loose coupling between stages.** Each script owns one stage (generate → organise → train → infer), so any stage can be re-run or replaced (e.g., swap Gemini for a different image generator) without touching the others.
+- **No training step.** Pre-trained ONNX models run directly — ideal for demos and classrooms.
+- **Config-driven actions.** Adding or changing a gesture's behavior is a JSON edit, not a code change.
+- **Bounded movement.** The balance system keeps the drone within a defined range of motion automatically.
+- **Test/live separation.** The same code runs safely on any machine with `test` mode and only connects to real hardware when explicitly switched to `live` mode.

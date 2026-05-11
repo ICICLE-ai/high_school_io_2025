@@ -1,9 +1,14 @@
 import cv2
 import json
+import os
+import sys
 import time
 import copy
+import numpy as np
 from collections import defaultdict
-from ultralytics import YOLO
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "dynamic_gestures"))
+from utils import targets  # shared gesture vocabulary — used by both detectors
 
 # Switch between CV-only testing and real drone execution.
 # - "test": never connects/sends commands to drone
@@ -17,15 +22,69 @@ if RUN_MODE == "live":
     from SoftwarePilot import SoftwarePilot
 
 # Load actions from JSON
+_actions_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'actions.json')
 try:
-    with open('actions.json', 'r') as f:
+    with open(_actions_path, 'r') as f:
         actions_config = json.load(f)
 except FileNotFoundError:
-    print("actions.json not found! Please create it.")
+    print(f"actions.json not found at {_actions_path}! Please create it.")
     actions_config = {}
 
-# Load YOLO model
-model = YOLO('runs/detect/yolo_training3/weights/best.pt')
+# ── DETECTOR GATEWAY ──────────────────────────────────────────────────────────
+# Switch DETECTOR to choose the gesture recognition engine.
+#
+#   "dynamic_gestures"  — built-in pre-trained ONNX models, no setup needed.
+#   "yolo"              — your own trained YOLO model (.pt file).
+#
+# To use YOLO:
+#   1. Set DETECTOR = "yolo"
+#   2. Set YOLO_MODEL_PATH to your .pt weights file
+#   3. Fill YOLO_CLASS_MAP: {yolo_class_id (int): "gesture_label" (str)}
+#      Labels must match keys in actions.json and appear in the targets list.
+DETECTOR = "dynamic_gestures"
+
+YOLO_MODEL_PATH = "runs/detect/yolo_training/weights/best.pt"
+YOLO_CONF = 0.3
+YOLO_CLASS_MAP = {
+    # example — edit to match your trained model's class IDs
+    0: "like",
+    1: "dislike",
+    2: "stop",
+    3: "peace",
+}
+# ─────────────────────────────────────────────────────────────────────────────
+
+if DETECTOR == "dynamic_gestures":
+    from main_controller import MainController
+    _dg_dir = os.path.join(os.path.dirname(__file__), "dynamic_gestures")
+    _controller = MainController(
+        os.path.join(_dg_dir, "models", "hand_detector.onnx"),
+        os.path.join(_dg_dir, "models", "crops_classifier.onnx"),
+    )
+
+    def detect(frame):
+        return _controller(frame)
+
+elif DETECTOR == "yolo":
+    from ultralytics import YOLO as _YOLO
+    _yolo_model = _YOLO(YOLO_MODEL_PATH)
+    _label_to_idx = {label: i for i, label in enumerate(targets)}
+
+    def detect(frame):
+        results = _yolo_model(frame, conf=YOLO_CONF, verbose=False)[0]
+        boxes = results.boxes
+        if boxes is None or len(boxes) == 0:
+            return np.empty((0, 4), dtype=np.float32), [], []
+        bboxes = boxes.xyxy.cpu().numpy()
+        ids = [None] * len(bboxes)
+        label_indices = [
+            _label_to_idx.get(YOLO_CLASS_MAP.get(int(cls)))
+            for cls in boxes.cls.cpu().numpy()
+        ]
+        return bboxes, ids, label_indices
+
+else:
+    raise ValueError(f"Unknown DETECTOR: {DETECTOR!r}. Use 'dynamic_gestures' or 'yolo'.")
 
 # Setup drone
 drone = None
@@ -45,8 +104,7 @@ else:
 # Open camera
 def open_camera(camera_indices=(0, 1, 2, 3, 4)):
     for idx in camera_indices:
-        # CAP_AVFOUNDATION is the native macOS backend.
-        cap = cv2.VideoCapture(idx, cv2.CAP_AVFOUNDATION)
+        cap = cv2.VideoCapture(idx)
         if cap.isOpened():
             print(f"Camera opened on index {idx}.")
             return cap
@@ -57,8 +115,8 @@ def open_camera(camera_indices=(0, 1, 2, 3, 4)):
 cap = open_camera()
 if cap is None:
     raise SystemExit(
-        "Could not open any camera index (0-4). Check macOS camera permission "
-        "for Terminal/Cursor and ensure no other app is using the camera."
+        "Could not open any camera index (0-4). Ensure the camera is connected "
+        "and not in use by another application."
     )
 
 def execute_action(drone, command_config):
@@ -83,11 +141,6 @@ def execute_action(drone, command_config):
         return False
 
 
-def pick_command(action_config, execution_count):
-    _ = execution_count
-    return action_config
-
-
 def action_limit(action_config):
     max_executions = action_config.get("max_executions")
     if max_executions is None:
@@ -95,7 +148,7 @@ def action_limit(action_config):
     return int(max_executions)
 
 
-def action_limit_text(action_name, action_config):
+def action_limit_text(action_config):
     max_executions = action_limit(action_config)
     if max_executions is not None:
         return str(max_executions)
@@ -190,12 +243,13 @@ def resolve_balanced_command(action_config, balance_positions, balance_direction
     return command, group, step
 
 print(f"Detection started in {RUN_MODE} mode. Press 'q' to quit.")
+cv2.namedWindow('CV Detection', cv2.WINDOW_NORMAL)
+cv2.resizeWindow('CV Detection', 1280, 720)
 
 # State for debouncing
 last_action_time = 0
 cooldown_seconds = 2.0  # 2 seconds cooldown between gestures
 action_counts = {label: 0 for label in actions_config}
-subaction_counts = {label: defaultdict(int) for label in actions_config}
 balance_positions = defaultdict(float)
 balance_directions = defaultdict(lambda: 1)
 
@@ -203,29 +257,27 @@ while True:
     ret, frame = cap.read()
     if not ret:
         break
-
-    # Run YOLO detection
-    results = model(frame, conf=0.9)
+    frame = cv2.flip(frame, 1)
 
     current_time = time.time()
+    bboxes, ids, labels = detect(frame)
 
     # Process detections
-    for result in results:
-        boxes = result.boxes
-        for box in boxes:
-            cls = int(box.cls[0])
-            label = model.names[cls]
+    if bboxes is not None and bboxes.shape[0] > 0:
+        bboxes_int = bboxes.astype(np.int32)
+        for i in range(bboxes_int.shape[0]):
+            box = bboxes_int[i]
+            label_idx = labels[i]
+            label = targets[label_idx] if label_idx is not None else None
 
-            # Execute configured action with limits and sequence support.
-            if label in actions_config and current_time - last_action_time > cooldown_seconds:
-                action_config = actions_config[label]
-                max_executions = action_limit(action_config)
+            if label is not None and label in actions_config and current_time - last_action_time > cooldown_seconds:
+                cfg = actions_config[label]
+                max_executions = action_limit(cfg)
                 already_executed = action_counts[label]
 
                 if max_executions is None or already_executed < max_executions:
-                    command_to_run = pick_command(action_config, already_executed)
                     command_to_run, balance_group, balance_step = resolve_balanced_command(
-                        command_to_run,
+                        cfg,
                         balance_positions,
                         balance_directions
                     )
@@ -239,27 +291,25 @@ while True:
                             action_counts[label] += 1
                             if balance_group is not None:
                                 balance_positions[balance_group] += balance_step
-                            subaction_name = command_to_run.get("name")
-                            if subaction_name:
-                                subaction_counts[label][subaction_name] += 1
                             print(f"Detected: {label}. Execution #{action_counts[label]}")
                             last_action_time = current_time
 
-            # Draw bounding box
-            x1, y1, x2, y2 = map(int, box.xyxy[0])
-            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-            cv2.putText(frame, label, (x1, y1-10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
+            # Draw bounding box only for gestures configured in actions.json
+            if label and label in actions_config:
+                x1, y1, x2, y2 = box[0], box[1], box[2], box[3]
+                cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                cv2.putText(frame, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
 
     # Display frame
     y_offset = 25
-    for action_name, action_config in actions_config.items():
-        bounded_progress = bounded_progress_for_display(action_config, balance_positions)
+    for action_name, action_cfg in actions_config.items():
+        bounded_progress = bounded_progress_for_display(action_cfg, balance_positions)
         if bounded_progress is not None:
             executed, bounded_limit = bounded_progress
             limit_text = str(bounded_limit)
         else:
             executed = action_counts.get(action_name, 0)
-            limit_text = action_limit_text(action_name, action_config)
+            limit_text = action_limit_text(action_cfg)
         status_text = f"{action_name}: {executed}/{limit_text}"
         cv2.putText(
             frame,
@@ -276,7 +326,7 @@ while True:
     if "vertical" in balance_positions:
         v_pos = int(balance_positions["vertical"])
         up_left = max(0, 2 - v_pos)
-        down_left = max(0, v_pos - 0)
+        down_left = max(0, v_pos)
         cv2.putText(
             frame,
             f"vertical position={v_pos} | up_left={up_left} down_left={down_left}",
@@ -291,7 +341,7 @@ while True:
     if "forward_back" in balance_positions:
         fb_pos = int(balance_positions["forward_back"])
         forward_left = max(0, 2 - fb_pos)
-        backward_left = max(0, fb_pos - (-2))
+        backward_left = max(0, fb_pos + 2)
         cv2.putText(
             frame,
             f"forward_back position={fb_pos} | forward_left={forward_left} backward_left={backward_left}",

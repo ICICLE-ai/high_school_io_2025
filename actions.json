@@ -1,5 +1,5 @@
 {
-    "thumb_up": {
+    "like": {
         "component": "piloting",
         "action": "move_by",
         "args": [0, 1, 0, 0],
@@ -13,7 +13,7 @@
             "arg_index": 1
         }
     },
-    "thumb_down": {
+    "dislike": {
         "component": "piloting",
         "action": "move_by",
         "args": [0, -1, 0, 0],
@@ -27,14 +27,14 @@
             "arg_index": 1
         }
     },
-    "rotate": {
+    "stop": {
         "component": "piloting",
         "action": "move_by",
-        "args": [0, 0, 0, 180],
+        "args": [0, 0, 0, 3.14159],
         "kwargs": {"wait": false},
         "max_executions": null
     },
-    "peace_sign": {
+    "peace": {
         "component": "piloting",
         "action": "move_by",
         "args": [1, 0, 0, 0],
@@ -45,8 +45,21 @@
             "delta": 1,
             "min": -2,
             "max": 2,
-            "arg_index": 0,
-            "auto_reverse": true
+            "arg_index": 0
+        }
+    },
+    "fist": {
+        "component": "piloting",
+        "action": "move_by",
+        "args": [-1, 0, 0, 0],
+        "kwargs": {"wait": false},
+        "max_executions": null,
+        "balance": {
+            "group": "forward_back",
+            "delta": -1,
+            "min": -2,
+            "max": 2,
+            "arg_index": 0
         }
     }
 }
